@@ -1,80 +1,246 @@
 <!DOCTYPE html>
-<html lang='en'>
+<html lang="en">
 <head>
-    <meta charset='UTF-8'>
-    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
-    <title>React Website</title>
-    <script crossorigin src='https://unpkg.com/react@17/umd/react.development.js'></script>
-    <script crossorigin src='https://unpkg.com/react-dom@17/umd/react-dom.development.js'></script>
-    <script crossorigin src='https://unpkg.com/babel-standalone@6/babel.min.js'></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GT4 Randomizer Run Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body {
-            margin: 0;
-            font-family: Arial, sans-serif;
-            background: linear-gradient(to bottom, #245CAF, #1F9AD5, #71A0CA);
-            color: white;
-            height: 100vh;
-            overflow: hidden;
-        }
-        .navbar {
-            display: flex;
-            flex-direction: column;
-            position: absolute;
-            left: 40px;
-            top: 50%;
-            transform: translateY(-50%);
-        }
-        .button {
-            margin-bottom: 2rem;
-            padding: 2.5rem 5rem;
-            font-size: 2rem;
-            color: #f8f8f8;
-            cursor: pointer;
-        }
-        .button:hover {
-            background-color: #001f3f;
-        }
-        .active {
-            border-left: 4px solid white;
-            padding-left: 0.5rem;
-        }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #1f2937; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 10px; }
+        .event-card:hover { border-color: #3b82f6; }
+        .animate-pop { animation: pop 0.2s ease-out; }
+        @keyframes pop { 0% { transform: scale(0.95); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
     </style>
 </head>
-<body>
-    <div id='root'></div>
-    <script type='text/babel'>
-        const Navbar = ({ onSelect }) => {
-            const buttons = ['Home', 'About Us', 'Projects', 'Contacts'];
-            const [selected, setSelected] = React.useState('Home');
+<body class="bg-gray-900 text-gray-100 min-h-screen font-sans">
 
-            return (
-                <div className='navbar'>
-                    {buttons.map((button) => (
-                        <div
-                            key={button}
-                            onClick={() => {
-                                setSelected(button);
-                                onSelect(button);
-                            }}
-                            className={`button ${selected === button ? 'active' : ''}`}
-                        >
-                            {button}
+    <header class="bg-gray-800 border-b border-gray-700 p-4 sticky top-0 z-50 shadow-xl">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+            <h1 class="text-2xl font-bold tracking-tight text-blue-400">GT4 RANDOMIZER <span class="text-white font-light text-lg">RUN TRACKER</span></h1>
+            <div class="flex gap-4">
+                <div id="db-status" class="flex items-center gap-2 px-3 py-1 bg-gray-900 rounded-full border border-gray-700">
+                    <span class="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></span>
+                    <span class="text-[10px] font-bold uppercase text-gray-400">Loading Database...</span>
+                </div>
+                <button onclick="exportData()" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded text-sm font-bold transition">Export JSON</button>
+                <button onclick="resetAll()" class="bg-red-600/20 hover:bg-red-600 border border-red-600 px-4 py-2 rounded text-sm font-bold transition">Reset Run</button>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        <aside class="lg:col-span-1 space-y-6">
+            <div class="bg-gray-800 rounded-lg p-6 border border-gray-700 shadow-lg">
+                <h2 class="text-xl font-bold mb-4 border-b border-gray-700 pb-2">Run Statistics</h2>
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="bg-gray-900 p-3 rounded border border-gray-700">
+                        <p class="text-xs text-gray-400 uppercase">Events Completed</p>
+                        <p id="stat-completed" class="text-2xl font-bold">0</p>
+                    </div>
+                    <div class="bg-gray-900 p-3 rounded border border-gray-700">
+                        <p class="text-xs text-gray-400 uppercase">Avg. P:W</p>
+                        <p id="stat-avg-pw" class="text-2xl font-bold text-green-400">0.00</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-gray-800 rounded-lg p-6 border border-gray-700 shadow-lg sticky top-24">
+                <h2 class="text-xl font-bold mb-4 border-b border-gray-700 pb-2">Recent Acquisitions</h2>
+                <div id="recent-list" class="space-y-2 text-sm max-h-[400px] overflow-y-auto custom-scrollbar">
+                    <p class="text-gray-500 italic">No cars recorded yet...</p>
+                </div>
+            </div>
+        </aside>
+
+        <section class="lg:col-span-2 space-y-8">
+            <div id="event-container" class="space-y-8"></div>
+        </section>
+    </main>
+
+    <!-- Modal remains the same -->
+    <div id="modal" class="fixed inset-0 bg-black/80 hidden z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-gray-800 w-full max-w-2xl rounded-xl border border-gray-600 shadow-2xl flex flex-col max-h-[80vh]">
+            <div class="p-4 border-b border-gray-700 flex justify-between items-center">
+                <h3 id="modal-title" class="text-xl font-bold text-blue-400">Select Randomized Prize</h3>
+                <button onclick="closeModal()" class="text-gray-400 hover:text-white text-2xl">&times;</button>
+            </div>
+            <div class="p-4">
+                <input type="text" id="car-search" placeholder="Search car or manufacturer..." 
+                    class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 mb-4"
+                    oninput="filterCars(this.value)">
+                
+                <div id="car-results" class="overflow-y-auto h-64 custom-scrollbar space-y-1"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let carDatabase = [];
+        let runData = {};
+        let currentEditingEvent = null;
+
+        const EVENTS_DATA = [
+            { category: "Licences - Bronze", events: ["B Licence", "A Licence", "IB Licence", "IA Licence", "S Licence"] },
+            { category: "Beginner Events", events: ["Sunday Cup", "FF Challenge", "FR Challenge", "4WD Challenge", "MR Challenge", "Light-weight K-Car Cup", "Spider & Roadster", "Four Cylinder Shootout", "Sports Truck Race", "Super Wagon Series", "Six Cylinder Shootout", "All Events Complete"] },
+            { category: "Professional Events", events: ["Clubman Cup", "Boxer Spirit", "Race of NA Sport", "Race of Turbo Sport", "World Compact", "City Slickers", "World Classics", "Tuning Car Grand Prix", "Supercar Festival", "Clubman League", "Premium Sports Lounge", "Homologation Heroes", "All Events Complete"] },
+            { category: "Extreme Events", events: ["GT World Championship", "GT All Stars", "Real Circuit Tours", "8+ Cylinder Shootout", "Dream Car Championship", "Polyphony Digital Cup", "Like the Wind", "Formula GT Championship", "All Events Complete"] },
+            { category: "Special Condition Events", events: ["Rally Easy (All)", "Rally Normal (All)", "Rally Hard (All)", "All Events Complete"] }
+        ];
+
+        async function loadDatabase() {
+            try {
+                // To run this locally, you must serve the files via a local server (e.g. VS Code Live Server)
+                // or the browser will block the fetch due to CORS.
+                const response = await fetch('gt4_cars.json');
+                if (!response.ok) throw new Error('Network response was not ok');
+                carDatabase = await response.json();
+                
+                const status = document.getElementById('db-status');
+                status.innerHTML = `<span class="w-2 h-2 rounded-full bg-green-500"></span><span class="text-[10px] font-bold uppercase text-gray-400">${carDatabase.length} Cars Loaded</span>`;
+            } catch (error) {
+                console.error("Failed to load car database:", error);
+                document.getElementById('db-status').innerHTML = `<span class="w-2 h-2 rounded-full bg-red-500"></span><span class="text-[10px] font-bold uppercase text-red-400">DB Error</span>`;
+            }
+        }
+
+        function init() {
+            const container = document.getElementById('event-container');
+            EVENTS_DATA.forEach(cat => {
+                const section = document.createElement('div');
+                section.innerHTML = `
+                    <h2 class="text-2xl font-black mb-4 flex items-center gap-2 mt-6">
+                        <span class="w-2 h-8 bg-blue-500 rounded-full"></span>
+                        ${cat.category}
+                    </h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        ${cat.events.map(ev => {
+                            const eventId = `${cat.category.replace(/\s+/g, '-')}-${ev.replace(/\s+/g, '-')}`;
+                            return `
+                                <div onclick="openSelector('${eventId}', '${ev}')" id="card-${eventId}" class="event-card bg-gray-800 border-2 border-transparent p-4 rounded-xl cursor-pointer transition-all shadow-md">
+                                    <p class="text-xs text-gray-500 font-bold mb-1 uppercase tracking-wider">${ev}</p>
+                                    <div id="content-${eventId}"><p class="text-gray-600 italic text-sm">Select prize...</p></div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
+                container.appendChild(section);
+            });
+            loadDatabase().then(() => loadFromStorage());
+        }
+
+        function openSelector(id, name) {
+            currentEditingEvent = id;
+            document.getElementById('modal-title').innerText = `Prize: ${name}`;
+            document.getElementById('modal').classList.remove('hidden');
+            document.getElementById('car-search').value = "";
+            document.getElementById('car-search').focus();
+            filterCars("");
+        }
+
+        function closeModal() { document.getElementById('modal').classList.add('hidden'); }
+
+        function filterCars(query) {
+            const results = document.getElementById('car-results');
+            results.innerHTML = "";
+            
+            const q = query.toLowerCase();
+            const filtered = carDatabase.filter(c => 
+                `${c.mfr} ${c.name}`.toLowerCase().includes(q)
+            ).slice(0, 50); // Limit results for performance
+
+            filtered.forEach(car => {
+                const div = document.createElement('div');
+                div.className = "p-3 bg-gray-900 hover:bg-blue-900/40 border border-gray-700 rounded-lg cursor-pointer flex justify-between items-center transition mb-1 group animate-pop";
+                div.innerHTML = `
+                    <div class="flex flex-col">
+                        <div class="flex items-center gap-2">
+                            <span class="font-bold text-white">${car.mfr}</span>
+                            <span class="text-blue-400 font-medium">${car.name}</span>
                         </div>
-                    ))}
-                </div>
-            );
-        };
+                        <span class="text-[10px] text-gray-500 font-bold uppercase">${car.attr || ""}</span>
+                    </div>
+                    <div class="text-right text-xs text-gray-400">
+                        ${car.drv} | ${car.hp}HP | ${car.wgt}kg
+                    </div>
+                `;
+                div.onclick = () => selectCar(car);
+                results.appendChild(div);
+            });
+        }
 
-        const App = () => {
-            const [page, setPage] = React.useState('Home');
-            return (
-                <div>
-                    <Navbar onSelect={setPage} />
-                </div>
-            );
-        };
+        function selectCar(car) {
+            const pw = car.hp > 0 ? (car.wgt / car.hp).toFixed(3) : "0.000";
+            runData[currentEditingEvent] = { ...car, pw };
+            updateCardUI(currentEditingEvent, car, pw);
+            updateStats();
+            saveToStorage();
+            closeModal();
+        }
 
-        ReactDOM.render(<App />, document.getElementById('root'));
+        function updateCardUI(id, car, pw) {
+            const container = document.getElementById(`content-${id}`);
+            const card = document.getElementById(`card-${id}`);
+            if (!container || !card) return;
+            
+            card.classList.add('bg-blue-900/20', 'border-blue-500/50');
+            container.innerHTML = `
+                <div class="flex flex-col mt-1">
+                    <span class="text-md font-black text-white leading-tight">${car.mfr} ${car.name}</span>
+                    <div class="grid grid-cols-4 gap-1 mt-3 text-[9px] font-black uppercase text-gray-500">
+                        <div class="bg-gray-950/50 p-1 rounded text-center">DRV<br><span class="text-white text-[11px]">${car.drv}</span></div>
+                        <div class="bg-gray-950/50 p-1 rounded text-center">HP<br><span class="text-white text-[11px]">${car.hp}</span></div>
+                        <div class="bg-gray-950/50 p-1 rounded text-center">KG<br><span class="text-white text-[11px]">${car.wgt}</span></div>
+                        <div class="bg-gray-950/50 p-1 rounded text-center">P:W<br><span class="text-green-400 text-[11px]">${pw}</span></div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function updateStats() {
+            const entries = Object.values(runData);
+            document.getElementById('stat-completed').innerText = entries.length;
+            if (entries.length > 0) {
+                const totalPw = entries.reduce((acc, curr) => acc + parseFloat(curr.pw), 0);
+                document.getElementById('stat-avg-pw').innerText = (totalPw / entries.length).toFixed(3);
+                
+                const recentList = document.getElementById('recent-list');
+                recentList.innerHTML = entries.slice(-10).reverse().map(c => `
+                    <div class="p-2 bg-gray-900 rounded border border-gray-700 flex justify-between items-center mb-1">
+                        <div class="flex flex-col"><span class="text-xs font-bold">${c.mfr}</span><span class="text-[10px] text-gray-500">${c.name}</span></div>
+                        <span class="text-xs font-mono text-blue-400">${c.pw}</span>
+                    </div>
+                `).join('');
+            }
+        }
+
+        function saveToStorage() { localStorage.setItem('gt4_randomizer_v4', JSON.stringify(runData)); }
+        function loadFromStorage() {
+            const saved = localStorage.getItem('gt4_randomizer_v4');
+            if (saved) {
+                runData = JSON.parse(saved);
+                Object.keys(runData).forEach(id => {
+                    const car = runData[id];
+                    updateCardUI(id, car, car.pw);
+                });
+                updateStats();
+            }
+        }
+
+        function resetAll() { if(confirm("Clear progress?")) { localStorage.removeItem('gt4_randomizer_v4'); location.reload(); } }
+        function exportData() {
+            const blob = new Blob([JSON.stringify(runData, null, 2)], {type: 'application/json'});
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `gt4_run.json`;
+            a.click();
+        }
+
+        window.onload = init;
     </script>
 </body>
 </html>
